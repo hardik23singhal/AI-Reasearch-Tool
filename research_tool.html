@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Research Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            @apply bg-gray-100;
+        }
+        .container {
+            @apply flex h-screen;
+        }
+        .sidebar {
+            @apply w-1/4 p-6 bg-white border-r border-gray-200 flex flex-col shadow-lg;
+        }
+        .main-content {
+            @apply w-3/4 flex flex-col p-6;
+        }
+        .message-box {
+            @apply p-4 rounded-xl shadow-sm mb-4 transition-all duration-300 transform;
+        }
+        .user-message {
+            @apply self-end bg-blue-600 text-white rounded-br-none;
+        }
+        .ai-message {
+            @apply self-start bg-gray-200 text-gray-800 rounded-bl-none;
+        }
+        .loading-indicator {
+            @apply flex items-center justify-center p-4 text-gray-500;
+        }
+        .chat-container {
+            @apply flex-grow overflow-y-auto pr-4;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        .prose a {
+            @apply text-blue-600 underline;
+        }
+        @keyframes message-fade-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message-fade-in {
+            animation: message-fade-in 0.3s ease-out;
+        }
+        .sidebar button {
+            @apply transition duration-200;
+        }
+        .sidebar button:hover {
+            @apply bg-gray-300;
+        }
+        .chat-input-container {
+            @apply relative flex items-center;
+        }
+        #chatInput {
+            @apply rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 pl-6 pr-24 py-4 w-full;
+        }
+        #chatForm button[type="submit"] {
+            @apply absolute right-4 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2.5 shadow-md transition duration-200;
+        }
+        #recordButton {
+            @apply absolute right-16 top-1/2 -translate-y-1/2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2.5 shadow-md transition duration-200;
+        }
+        .pulsing-record {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1) translate(-50%, -50%); }
+            50% { transform: scale(1.1) translate(-50%, -50%); }
+            100% { transform: scale(1) translate(-50%, -50%); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 antialiased">
+
+    <div class="container">
+        <!-- Sidebar for file upload and document list -->
+        <div class="sidebar">
+            <div class="flex-shrink-0">
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">AI Researcher</h1>
+                <p class="text-xs text-gray-500 mb-4 truncate">User ID: <span id="userIdDisplay" class="font-mono text-xs">Loading...</span></p>
+                
+                <!-- File Upload -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Upload Document (.docx, .txt, .pdf)</label>
+                    <input type="file" id="fileInput" class="hidden" accept=".docx, .txt, .pdf">
+                    <button onclick="document.getElementById('fileInput').click()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-200">
+                        Upload Document
+                    </button>
+                    <p class="text-sm text-red-500 mt-2" id="fileError"></p>
+                </div>
+            </div>
+
+            <!-- Documents List -->
+            <div class="flex-grow overflow-y-auto pr-2">
+                <h2 class="text-lg font-semibold text-gray-700 mb-4">My Documents</h2>
+                <ul id="documentsList" class="space-y-3">
+                    <!-- Documents will be populated here -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- Main chat area -->
+        <div class="main-content">
+            <!-- Chat Header -->
+            <div class="flex-shrink-0 bg-white p-4 rounded-lg shadow-sm mb-6 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-700" id="currentDocumentTitle">No document selected</h2>
+                <button id="clearChatBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium py-1.5 px-4 rounded-lg transition duration-200">
+                    Clear Chat
+                </button>
+            </div>
+
+            <!-- Message Display Area -->
+            <div class="chat-container flex flex-col mb-4" id="chatArea">
+                <!-- Messages will be populated here -->
+                <div class="loading-indicator hidden" id="loadingIndicator">
+                    <svg class="spinner w-6 h-6 mr-2 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Thinking...
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <form id="chatForm" class="flex-shrink-0 relative">
+                <input type="text" id="chatInput" placeholder="Ask a question about the document..." class="w-full pl-6 pr-24 py-4 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200">
+                <button type="button" id="recordButton" class="absolute right-16 top-1/2 -translate-y-1/2 bg-red-500 hover:bg-red-600 text-white rounded-full p-2.5 shadow-md transition duration-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4z" clip-rule="evenodd" />
+                        <path d="M5.5 9.5A4.5 4.5 0 0110 5a4.5 4.5 0 014.5 4.5v1A4.5 4.5 0 0110 15a4.5 4.5 0 01-4.5-4.5v-1zM10 18a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 0110 18z" />
+                    </svg>
+                </button>
+                <button type="submit" class="absolute right-4 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2.5 shadow-md transition duration-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        // Import Firebase modules from CDN
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, query, orderBy, onSnapshot, addDoc, getDoc, updateDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Import libraries for file parsing
+        import * as mammoth from "https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js";
+
+        // Set up PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.12.313/pdf.worker.min.js";
+        }
+
+        // Global variables for Firebase configuration and app ID
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // UI elements
+        const fileInput = document.getElementById('fileInput');
+        const documentsList = document.getElementById('documentsList');
+        const chatForm = document.getElementById('chatForm');
+        const chatInput = document.getElementById('chatInput');
+        const chatArea = document.getElementById('chatArea');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const currentDocumentTitle = document.getElementById('currentDocumentTitle');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const fileError = document.getElementById('fileError');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+        const recordButton = document.getElementById('recordButton');
+        
+        let db;
+        let auth;
+        let userId;
+        let isAuthReady = false;
+        let selectedDoc = null;
+        let apiKey = "";
+        let recognition = null;
+        let isListening = false;
+
+        // Initialize Web Speech API
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            
+            recognition.onstart = () => {
+                isListening = true;
+                recordButton.classList.add('pulsing-record');
+                recordButton.title = "Recording...";
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                chatInput.value = transcript;
+                recordButton.classList.remove('pulsing-record');
+                isListening = false;
+                recordButton.title = "Record Audio";
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                recordButton.classList.remove('pulsing-record');
+                recordButton.title = "Record Audio";
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                recordButton.classList.remove('pulsing-record');
+                isListening = false;
+                recordButton.title = "Record Audio";
+            };
+        } else {
+            recordButton.style.display = 'none';
+            console.warn('Web Speech API is not supported in this browser.');
+        }
+
+        recordButton.addEventListener('click', () => {
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        });
+
+        // Firebase Initialization
+        if (Object.keys(firebaseConfig).length > 0) {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // Sign in with custom token or anonymously
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    isAuthReady = true;
+                    userIdDisplay.textContent = userId;
+                    // Start listening for documents and chat history
+                    listenForDocuments();
+                    listenForChatHistory();
+                } else {
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (error) {
+                        console.error("Firebase auth error:", error);
+                        userIdDisplay.textContent = "Auth Error";
+                    }
+                }
+            });
+        } else {
+            console.error("Firebase config is missing.");
+            userIdDisplay.textContent = "Config Error";
+        }
+        
+        // Listen for document changes in Firestore
+        function listenForDocuments() {
+            if (!isAuthReady || !userId) return;
+            const docsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/research_documents`);
+            onSnapshot(docsCollectionRef, (snapshot) => {
+                documentsList.innerHTML = ''; // Clear previous list
+                snapshot.forEach((doc) => {
+                    const docData = doc.data();
+                    const li = document.createElement('li');
+                    li.innerHTML = `<button class="w-full text-left p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition duration-200 text-sm font-medium truncate" data-id="${doc.id}">${docData.name}</button>`;
+                    li.querySelector('button').addEventListener('click', () => selectDocument(doc.id, docData.name, docData.content));
+                    documentsList.appendChild(li);
+                });
+            });
+        }
+
+        // Listen for chat history changes in Firestore
+        function listenForChatHistory() {
+            if (!isAuthReady || !userId) return;
+            const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chat_history`);
+            const chatQuery = query(chatCollectionRef, orderBy('timestamp'));
+            onSnapshot(chatQuery, (snapshot) => {
+                chatArea.innerHTML = '';
+                let lastTimestamp = 0;
+                snapshot.forEach((doc) => {
+                    const message = doc.data();
+                    if (!message.documentId || message.documentId !== selectedDoc?.id) {
+                        return; // Only show messages for the selected document
+                    }
+                    if (message.timestamp > lastTimestamp) {
+                        createMessageElement(message.text, message.sender, message.citations);
+                        lastTimestamp = message.timestamp;
+                    }
+                });
+                chatArea.scrollTop = chatArea.scrollHeight; // Auto-scroll to the bottom
+                // Hide loading indicator if the last message is from the AI
+                if (chatArea.lastElementChild?.dataset?.sender === 'ai') {
+                    loadingIndicator.classList.add('hidden');
+                }
+            });
+        }
+
+        // Select a document to start chatting about
+        function selectDocument(docId, docName, docContent) {
+            selectedDoc = { id: docId, name: docName, content: docContent };
+            currentDocumentTitle.textContent = docName;
+            
+            // Clear chat and get new history for this document
+            chatArea.innerHTML = '';
+            listenForChatHistory();
+
+            // Add an initial greeting from the AI
+            addDoc(collection(db, `artifacts/${appId}/users/${userId}/chat_history`), {
+                documentId: docId,
+                sender: 'ai',
+                text: `Hello! I'm ready to help you with your research on "${docName}". What questions do you have?`,
+                timestamp: Date.now(),
+                citations: []
+            });
+        }
+        
+        // Main file upload handler
+        fileInput.addEventListener('change', async (event) => {
+            fileError.textContent = '';
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const extension = file.name.split('.').pop().toLowerCase();
+            
+            let docContent = '';
+            try {
+                if (extension === 'docx') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer });
+                    docContent = result.value;
+                } else if (extension === 'txt') {
+                    docContent = await readFileAsText(file);
+                } else if (extension === 'pdf') {
+                    docContent = await readPdfFile(file);
+                } else {
+                    fileError.textContent = "Error: Unsupported file type. Please upload a .docx, .txt, or .pdf file.";
+                    return;
+                }
+                
+                // Save to Firestore
+                const docRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/research_documents`), {
+                    name: file.name,
+                    content: docContent,
+                    timestamp: Date.now()
+                });
+
+                selectDocument(docRef.id, file.name, docContent);
+                fileInput.value = ''; // Reset file input
+            } catch (error) {
+                console.error("Error processing file or saving to Firestore:", error);
+                fileError.textContent = "An error occurred while processing the file. Please try a different file.";
+            }
+        });
+        
+        // Helper function to read .txt files
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
+                reader.readAsText(file);
+            });
+        }
+        
+        // Helper function to read .pdf files
+        async function readPdfFile(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let text = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                text += textContent.items.map(item => item.str).join(' ');
+            }
+            return text;
+        }
+
+        // Handle chat form submission
+        chatForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const question = chatInput.value.trim();
+            if (!question || !selectedDoc) return;
+
+            // Add user message to Firestore
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chat_history`), {
+                documentId: selectedDoc.id,
+                sender: 'user',
+                text: question,
+                timestamp: Date.now(),
+            });
+
+            // Show loading indicator
+            loadingIndicator.classList.remove('hidden');
+            
+            // Get the full document content from Firestore
+            const docRef = doc(db, `artifacts/${appId}/users/${userId}/research_documents/${selectedDoc.id}`);
+            const docSnap = await getDoc(docRef);
+            const docContent = docSnap.data().content;
+
+            // Call the AI model
+            await callGeminiApi(docContent, question);
+            
+            chatInput.value = ''; // Clear input
+        });
+        
+        // Clear chat button functionality
+        clearChatBtn.addEventListener('click', async () => {
+             if (!selectedDoc) return;
+             const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chat_history`);
+             const q = query(chatCollectionRef, orderBy('timestamp'));
+             const snapshot = await getDocs(q);
+             snapshot.forEach(async (d) => {
+                if(d.data().documentId === selectedDoc.id) {
+                    await deleteDoc(d.ref);
+                }
+             });
+        });
+
+        // Function to call the Gemini API
+        async function callGeminiApi(docContent, userQuery) {
+            // Check if the API key is set
+            if (!apiKey) {
+                const enteredKey = prompt("Please enter your Gemini API key to continue:");
+                if (!enteredKey) {
+                    console.error("API Key is required to call the Gemini API.");
+                    return;
+                }
+                apiKey = enteredKey;
+            }
+
+            const systemPrompt = `You are an AI research assistant. Your task is to provide a concise, factual, and helpful summary or answer based ONLY on the provided research document.
+            
+            DO NOT invent information. If the answer is not in the document, state that you cannot find the information.
+            
+            Document Content:
+            ${docContent}
+            `;
+            
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            let response;
+            try {
+                response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    const text = candidate.content.parts[0].text;
+                    let sources = [];
+                    const groundingMetadata = candidate.groundingMetadata;
+                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                        sources = groundingMetadata.groundingAttributions
+                            .map(attribution => ({
+                                uri: attribution.web?.uri,
+                                title: attribution.web?.title,
+                            }))
+                            .filter(source => source.uri && source.title);
+                    }
+
+                    // Add AI response to Firestore
+                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chat_history`), {
+                        documentId: selectedDoc.id,
+                        sender: 'ai',
+                        text: text,
+                        timestamp: Date.now(),
+                        citations: []
+                    });
+                } else {
+                    await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chat_history`), {
+                        documentId: selectedDoc.id,
+                        sender: 'ai',
+                        text: "Sorry, I couldn't generate a response. Please try rephrasing your question.",
+                        timestamp: Date.now(),
+                        citations: []
+                    });
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chat_history`), {
+                    documentId: selectedDoc.id,
+                    sender: 'ai',
+                    text: "An error occurred while contacting the AI. Please check your network connection.",
+                    timestamp: Date.now(),
+                    citations: []
+                });
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+        
+        // Create message element and append to chat area
+        function createMessageElement(text, sender, citations) {
+            const messageContainer = document.createElement('div');
+            messageContainer.dataset.sender = sender;
+            const isUser = sender === 'user';
+            const messageClass = isUser ? 'user-message' : 'ai-message';
+
+            messageContainer.className = `message-box max-w-lg ${messageClass} ${isUser ? 'ml-auto' : 'mr-auto'} message-fade-in`;
+            messageContainer.innerHTML = `<p class="prose max-w-none">${text.replace(/\n/g, '<br>')}</p>`;
+
+            if (citations && citations.length > 0) {
+                const sourcesList = document.createElement('ul');
+                sourcesList.className = 'mt-2 text-xs text-gray-500 list-disc list-inside';
+                sourcesList.innerHTML = `<p class="text-xs font-semibold mb-1">Sources:</p>`;
+                citations.forEach(source => {
+                    if (source.uri && source.title) {
+                        const li = document.createElement('li');
+                        li.innerHTML = `<a href="${source.uri}" target="_blank" class="truncate block">${source.title}</a>`;
+                        sourcesList.appendChild(li);
+                    }
+                });
+                messageContainer.appendChild(sourcesList);
+            }
+
+            chatArea.appendChild(messageContainer);
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check if Firebase is initialized and ready to start listening
+            if (isAuthReady) {
+                listenForDocuments();
+                listenForChatHistory();
+            }
+        });
+    </script>
+</body>
+</html>
