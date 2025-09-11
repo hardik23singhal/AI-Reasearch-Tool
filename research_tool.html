@@ -22,6 +22,7 @@
       font-family: 'Inter', sans-serif;
     }
 
+    /* Animation for the thinking spinner */
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
@@ -31,6 +32,7 @@
       animation: spin 1s linear infinite;
     }
 
+    /* Animation for messages fading in */
     @keyframes message-fade-in {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -40,6 +42,7 @@
       animation: message-fade-in 0.3s ease-out;
     }
 
+    /* Animation for the recording button pulse */
     @keyframes pulse {
       0% { transform: scale(1) translate(-50%, -50%); }
       50% { transform: scale(1.1) translate(-50%, -50%); }
@@ -52,6 +55,14 @@
 
     .prose a {
       @apply text-blue-600 underline;
+    }
+
+    .user-message {
+      @apply bg-blue-500 text-white rounded-t-xl rounded-bl-xl p-4 shadow-md mb-4;
+    }
+
+    .ai-message {
+      @apply bg-gray-200 text-gray-800 rounded-t-xl rounded-br-xl p-4 shadow-md mb-4;
     }
   </style>
 </head>
@@ -131,7 +142,7 @@
         // Import Firebase modules from CDN
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, query, orderBy, onSnapshot, addDoc, getDoc, updateDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, query, onSnapshot, addDoc, getDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Import libraries for file parsing
         import * as mammoth from "https://cdn.jsdelivr.net/npm/mammoth/mammoth.browser.min.js";
@@ -164,7 +175,8 @@
         let userId;
         let isAuthReady = false;
         let selectedDoc = null;
-        let apiKey = "AIzaSyCgveXI1DFa8Fi7V1cS822yXrPwQe53LPc";
+        // The API key is now handled by the environment and is not hardcoded.
+        let apiKey = "AIzaSyCgveXI1DFa8Fi7V1cS822yXrPwQe53LPc"; 
         let recognition = null;
         let isListening = false;
 
@@ -251,7 +263,8 @@
         function listenForDocuments() {
             if (!isAuthReady || !userId) return;
             const docsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/research_documents`);
-            onSnapshot(docsCollectionRef, (snapshot) => {
+            const q = query(docsCollectionRef); // Do not use orderBy for better performance
+            onSnapshot(q, (snapshot) => {
                 documentsList.innerHTML = ''; // Clear previous list
                 snapshot.forEach((doc) => {
                     const docData = doc.data();
@@ -267,19 +280,23 @@
         function listenForChatHistory() {
             if (!isAuthReady || !userId) return;
             const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chat_history`);
-            const chatQuery = query(chatCollectionRef, orderBy('timestamp'));
+            const chatQuery = query(chatCollectionRef); // Do not use orderBy for better performance
             onSnapshot(chatQuery, (snapshot) => {
+                // Filter messages client-side
+                const messages = [];
+                snapshot.forEach(doc => {
+                  const message = doc.data();
+                  if (message.documentId === selectedDoc?.id) {
+                    messages.push(message);
+                  }
+                });
+                
+                // Sort client-side
+                messages.sort((a, b) => a.timestamp - b.timestamp);
+
                 chatArea.innerHTML = '';
-                let lastTimestamp = 0;
-                snapshot.forEach((doc) => {
-                    const message = doc.data();
-                    if (!message.documentId || message.documentId !== selectedDoc?.id) {
-                        return; // Only show messages for the selected document
-                    }
-                    if (message.timestamp > lastTimestamp) {
-                        createMessageElement(message.text, message.sender, message.citations);
-                        lastTimestamp = message.timestamp;
-                    }
+                messages.forEach((message) => {
+                    createMessageElement(message.text, message.sender, message.citations);
                 });
                 chatArea.scrollTop = chatArea.scrollHeight; // Auto-scroll to the bottom
                 // Hide loading indicator if the last message is from the AI
@@ -401,27 +418,17 @@
         clearChatBtn.addEventListener('click', async () => {
              if (!selectedDoc) return;
              const chatCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/chat_history`);
-             const q = query(chatCollectionRef, orderBy('timestamp'));
+             const q = query(chatCollectionRef);
              const snapshot = await getDocs(q);
              snapshot.forEach(async (d) => {
-                if(d.data().documentId === selectedDoc.id) {
-                    await deleteDoc(d.ref);
-                }
+               if(d.data().documentId === selectedDoc.id) {
+                 await deleteDoc(d.ref);
+               }
              });
         });
 
         // Function to call the Gemini API
         async function callGeminiApi(docContent, userQuery) {
-            // Check if the API key is set
-            if (!apiKey) {
-                const enteredKey = prompt("Please enter your Gemini API key to continue:");
-                if (!enteredKey) {
-                    console.error("API Key is required to call the Gemini API.");
-                    return;
-                }
-                apiKey = enteredKey;
-            }
-
             const systemPrompt = `You are an AI research assistant. Your task is to provide a concise, factual, and helpful summary or answer based ONLY on the provided research document.
             
             DO NOT invent information. If the answer is not in the document, state that you cannot find the information.
@@ -434,7 +441,8 @@
 
             const payload = {
                 contents: [{ parts: [{ text: userQuery }] }],
-                tools: [{ "google_search": {} }],
+                // The tool for Google Search has been removed to ensure the AI
+                // only answers from the provided document content, as per the system prompt.
                 systemInstruction: {
                     parts: [{ text: systemPrompt }]
                 },
@@ -474,7 +482,8 @@
                         sender: 'ai',
                         text: text,
                         timestamp: Date.now(),
-                        citations: []
+                        // Now we store the actual citations in Firestore
+                        citations: sources
                     });
                 } else {
                     await addDoc(collection(db, `artifacts/${appId}/users/${userId}/chat_history`), {
