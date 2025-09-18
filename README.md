@@ -3,7 +3,7 @@ The AI Research Assistant is a modern web application designed to help you inter
 
 Setup: 
 Place **apikey** of Gemini Account in this Code.
-🚀 Features
+🚀 Featuress
 📄 Document Upload & Processing
 
 Upload and process various document types including:
